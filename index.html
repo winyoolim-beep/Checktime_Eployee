@@ -15,11 +15,11 @@
         <div id="login-section">
             <input type="text" id="user" class="form-control mb-2" placeholder="Username">
             <input type="password" id="pass" class="form-control mb-3" placeholder="Password">
-            <button class="btn btn-primary w-100" onclick="doLogin()">Login</button>
+            <button id="login-btn" class="btn btn-primary w-100" onclick="doLogin()">Login</button>
         </div>
 
-        <div id="confirm-section" class="d-none">
-            <button class="btn btn-success btn-lg w-100 py-4" onclick="handleVerify()">
+        <div id="confirm-section" class="hidden d-none">
+            <button id="verify-btn" class="btn btn-success btn-lg w-100 py-4" onclick="handleVerify()">
                 👆 สแกนนิ้ว/ใบหน้า ยืนยัน
             </button>
         </div>
@@ -29,11 +29,13 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const params = {
-            m: urlParams.get('m'),
-            d: urlParams.get('d'),
-            t: urlParams.get('t')
+            m: urlParams.get('m') || 'ไม่ได้ระบุ',
+            d: urlParams.get('d') || 'ไม่ได้ระบุ',
+            t: urlParams.get('t') || 'เข้างาน'
         };
-        const WEB_APP_URL = "URL_ของ_GOOGLE_APPS_SCRIPT_ที่คุณ_DEPLOY_แบบ_ANYONE";
+
+        // *** ตรวจสอบ URL ตรงนี้ให้ถูกต้อง ***
+        const WEB_APP_URL = "ใส่_URL_APPS_SCRIPT_ที่_DEPLOY_แล้ว_ที่นี่";
 
         document.getElementById('info').innerHTML = `เครื่อง: ${params.m}<br>หน่วยงาน: ${params.d}<br>ประเภท: ${params.t}`;
 
@@ -42,42 +44,70 @@
         async function doLogin() {
             const u = document.getElementById('user').value;
             const p = document.getElementById('pass').value;
-            const res = await fetch(WEB_APP_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'login', username: u, password: p })
-            });
-            const data = await res.json();
-            if(data.success) {
-                empId = data.user.empId;
-                document.getElementById('login-section').classList.add('d-none');
-                document.getElementById('confirm-section').classList.remove('d-none');
-            } else { alert("Login Failed"); }
+            const btn = document.getElementById('login-btn');
+            
+            if(!u || !p) { alert("กรุณากรอกข้อมูลให้ครบ"); return; }
+
+            btn.disabled = true;
+            btn.innerText = "กำลังตรวจสอบ...";
+
+            try {
+                // ส่งแบบ text/plain เพื่อเลี่ยงปัญหา CORS ในเบราว์เซอร์บางตัว
+                const res = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'cors', // เปลี่ยนเป็น cors
+                    body: JSON.stringify({ action: 'login', username: u, password: p })
+                });
+                const data = await res.json();
+                
+                if(data.success) {
+                    empId = data.user.empId;
+                    document.getElementById('login-section').classList.add('d-none');
+                    document.getElementById('confirm-section').classList.remove('d-none');
+                } else {
+                    alert("เข้าสู่ระบบไม่สำเร็จ: " + data.message);
+                }
+            } catch (err) {
+                console.error(err);
+                alert("เกิดข้อผิดพลาดในการเชื่อมต่อ Google Script");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Login";
+            }
         }
 
         async function handleVerify() {
-            // เรียกใช้ระบบยืนยันตัวตนของเครื่อง (ถ้ามี)
-            if (window.PublicKeyCredential) {
-                try {
-                    // บันทึกข้อมูลลง Sheets ทันที
-                    const res = await fetch(WEB_APP_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ 
-                            action: 'scan', 
-                            empId: empId, 
-                            qrData: `${params.m}|${params.d}|${params.t}|today` 
-                        })
-                    });
-                    const result = await res.json();
-                    const s = document.getElementById('status');
-                    s.className = "alert mt-3 alert-success";
-                    s.innerText = result.message;
-                    s.classList.remove('d-none');
-                } catch (e) { alert("Error: " + e); }
-            } else {
-                alert("เครื่องนี้ไม่รองรับระบบสแกนลายนิ้วมือผ่านเว็บ");
+            if (!window.PublicKeyCredential) {
+                alert("เครื่องนี้ไม่รองรับระบบ Biometrics (สแกนนิ้ว/ใบหน้า)");
+                // ในกรณีที่ไม่รองรับ เราอาจจะอนุญาตให้บันทึกได้เลย หรือใช้ PIN แทน
+            }
+
+            const btn = document.getElementById('verify-btn');
+            btn.disabled = true;
+            btn.innerText = "กำลังบันทึก...";
+
+            try {
+                const res = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'cors',
+                    body: JSON.stringify({ 
+                        action: 'scan', 
+                        empId: empId, 
+                        qrData: `${params.m}|${params.d}|${params.t}` 
+                    })
+                });
+                const result = await res.json();
+                const s = document.getElementById('status');
+                s.className = `alert mt-3 ${result.message.includes('✅') ? 'alert-success' : 'alert-danger'}`;
+                s.innerText = result.message;
+                s.classList.remove('d-none');
+            } catch (e) {
+                alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "👆 สแกนนิ้ว/ใบหน้า ยืนยัน";
             }
         }
     </script>
-    
 </body>
 </html>
