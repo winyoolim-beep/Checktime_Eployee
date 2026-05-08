@@ -58,6 +58,9 @@
                 const res = await fetch(WEB_APP_URL, {
                     method: 'POST',
                     mode: 'cors', // เปลี่ยนเป็น cors
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf-8', // ใช้ text/plain เพื่อเลี่ยง CORS
+                    },
                     body: JSON.stringify({ action: 'login', username: u, password: p })
                 });
                 const data = await res.json();
@@ -92,6 +95,9 @@
                 const res = await fetch(WEB_APP_URL, {
                     method: 'POST',
                     mode: 'cors',
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf-8',
+                    },
                     body: JSON.stringify({ 
                         action: 'scan', 
                         empId: empId, 
